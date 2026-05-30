@@ -1,0 +1,15 @@
+MODEL_ID = "google/siglip2-base-patch16-naflex"
+SPARQL_ENDPOINT = "https://query.wikidata.org/sparql"
+TIMEOUT = 30
+INDEX_FILE = "/Explainable_Image_Seacrh/demo_data/_art.index"
+META_FILE = "/Explainable_Image_Seacrh/demo_data/_art.meta.json"
+SK_INDEX = "faiss_index"
+SK_META = "faiss_meta"
+
+FILE_EXT = [".tiff", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp"]
+CUSTOM_STOP_WORDS = ["near", "a", "the", "over", "and", "in", "with", "his", "under", "at", "by", "of"]
+
+[WIKI_HEADERS]
+User-Agent = "Demo/0.0 (https://example.org/demo/; demo@example.org)"
+Accept = "application/sparql-results+json"
+Content-Type = "application/sparql-query"
