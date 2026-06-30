@@ -18,9 +18,7 @@ import requests
 from PIL import Image, ImageDraw
 Image.MAX_IMAGE_PIXELS = None
 
-from SearchArtWorks import SearchArtWorks
-from ArtEmbedd import ArtEmbedd
-from ArtIndexer import ArtIndexer
+
 import string
 import streamlit as st
 from config import get_config
@@ -195,4 +193,5 @@ class ExplainITQuery:
         importances.sort(key=lambda x: abs(x["importance"]), reverse=True)
         
         return importances[:top_n]
+
 

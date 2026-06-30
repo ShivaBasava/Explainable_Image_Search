@@ -37,7 +37,7 @@ class ArtEmbedd:
 
 
     def _to_tensor(self, outputs):
-    """checking for available output parameters"""
+        """checking for available output parameters"""
         if isinstance(outputs,
                  torch.Tensor):
             return outputs
@@ -82,30 +82,3 @@ class ArtEmbedd:
         tensor = torch.nn.functional.normalize(tensor.float(), p=2, dim=-1) # hereim perfoming L2 norm
         return tensor.squeeze(0).cpu().numpy().astype(np.float32) 
 
-
-    def get_embedding__(self, input_data) -> np.ndarray:
-        """
-        #tipvs
-        """
-        is_image = isinstance(input_data, Image.Image)
- 
-        with torch.no_grad():
-            if is_image:
-
-                pixel_values = _IMAGE_TRANSFORM(
-                    input_data.convert("RGB")
-                ).unsqueeze(0).to(self.device)   # shape: (1, 3, 448, 448)
- 
-                out = self.model.encode_image(pixel_values)
-
-                tensor = out.cls_token.squeeze(1)
- 
-            else:
-
-                text_list = [str(input_data).lower()]
-                tensor = self.model.encode_text(text_list)
-                tensor = tensor.to(self.device)
- 
-        # L2 normalie
-        tensor = F.normalize(tensor.float(), p=2, dim=-1)
-        return tensor.squeeze(0).cpu().numpy().astype(np.float32)
