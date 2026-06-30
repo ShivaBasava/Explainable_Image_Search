@@ -39,6 +39,19 @@ streamlit run proto_type_main.py --logger.level=debug
 
 - Class ```ArtEmbedd``` for embedding wrapper via Model ( dual-encoders ).
 
+## ( 6 ) Explainable_Image_Search/ConceptExplainer.py
+
+- Semantic concept‑based explanation using a predefined concept.
+Projects queries and artworks into a concept space and displays shared concepts.
+
+## ( 7 ) Evaluation of Search (Explainable_Image_Search/EvalIndex.py)
+- An independent & standalone (preferably run w/o ui) Class ```EvalIndex```, handles the metrics evaluation for search functionality. One has to make sure that, above python environment is active and run following command -
+```
+    python EvalIndex.py
+```
+Computes Precision@K, Recall@K, & mAP@K.
+
+
 ## Explainable-Image-Search/requirements.txt
 
 - Possible Python packages to run project
@@ -47,13 +60,13 @@ streamlit run proto_type_main.py --logger.level=debug
 --
 ## Steps to run project locally
 - Clone the project repository
-	```git clone https://github.com/ShivaBasava/Explainable-Image-Search.git```
+	```git clone https://github.com/ShivaBasava/Explainable_Image_Search.git```
 
 - ```cd Explainable-Image-Search```
 
 - Create python environment with Python 3.11.11 version.
 
-- Install packages from the Explainable-Image-Search/requirements.txt
+- Install packages from the Explainable_Image_Search/requirements.txt
 
 - There are 2 mini-webapp build via Streamlit,
 -- webApp 0: for build_index.py
@@ -62,7 +75,7 @@ streamlit run proto_type_main.py --logger.level=debug
 
 	```streamlit run proto_type_main.py --logger.level=debug```
 
-	-- if not, one could build your their local index from webApp-0
+	-- if not, one could build their local index from webApp-0
 
 	```streamlit run build_index.py --logger.level=debug```
 	after this step, place the fresh files (.index & meta.json) to demo_data/ & updated app_config.toml path, later run webApp-1.
