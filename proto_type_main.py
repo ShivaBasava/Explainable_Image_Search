@@ -40,7 +40,7 @@ st.set_page_config(page_title="Explainable Search", layout="wide")
 @st.cache_resource(show_spinner="Loading page....")
 def get_tools():
     embedd = ArtEmbedd()
-    return SearchArtWorks(), ArtIndexer(INDEX_FILE, META_FILE), embedd, ExplainITQuery(), ConceptExplainer(embedd,INDEX_FILE, META_FILE)
+    return SearchArtWorks(), ArtIndexer(INDEX_FILE, META_FILE), embedd, ExplainITQuery()
 
 @st.cache_data(show_spinner=False, ttl=1800)  # Caching images
 def get_images_batch(urls):
@@ -66,7 +66,7 @@ def get_images(img_url, TIMEOUT=TIMEOUT, WIKI_HEADERS=WIKI_HEADERS):
         return None
 
 
-searcher, indexer, embedder, explain_it_query , concept_explainer = get_tools()
+searcher, indexer, embedder, explain_it_query = get_tools()
 
 
 def load_index():
@@ -95,6 +95,8 @@ if SK_INDEX not in st.session_state or SK_META not in st.session_state:
 # we have index and meta in session state
 index = st.session_state[SK_INDEX]
 meta  = st.session_state[SK_META]
+
+concept_explainer = ConceptExplainer(embedder, index, meta)
 
 st.title("iArt xAI Search")
 
@@ -219,7 +221,7 @@ if "search_results" in st.session_state and st.session_state["search_results"]:
                                         embedder.get_embedding, top_n=top_n_tokens )
 
                 if token_imps:
-                    col1, col2 = st.columns([2,1])
+                    col1, col2 = st.columns(2)
                     with col1:
                         
                         df_tok = pd.DataFrame(token_imps)
@@ -267,6 +269,7 @@ if "search_results" in st.session_state and st.session_state["search_results"]:
                             f"Row {r_patch_metrics.get('lowest', {}).get('row')}, Col {r_patch_metrics.get('lowest', {}).get('col')}"    )
                         
                 with col3:
-                    st.image(top_img_obj, caption="Retrieved result", width="stretch")
+                    st.image(top_img_obj, caption="Original Retrieved result", width="stretch")
         st.divider()
+
 
