@@ -13,3 +13,5 @@ faiss-cpu
 pandas
 plotly
 tqdm
+ultralytics
+shapely
