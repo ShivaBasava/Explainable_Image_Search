@@ -18,6 +18,8 @@ from ArtEmbedd import ArtEmbedd
 from ArtIndexer import ArtIndexer
 from ExplainITQuery import ExplainITQuery
 from ConceptExplainer import ConceptExplainer
+from feature_visualization.ICC_P_P import ICCVisualizer
+from feature_visualization.Image_color_histogram import HistogramVisualizer
 
 import streamlit as st
 from config import get_config
@@ -40,7 +42,8 @@ st.set_page_config(page_title="Explainable Search", layout="wide")
 @st.cache_resource(show_spinner="Loading page....")
 def get_tools():
     embedd = ArtEmbedd()
-    return SearchArtWorks(), ArtIndexer(INDEX_FILE, META_FILE), embedd, ExplainITQuery()
+    return (SearchArtWorks(), ArtIndexer(INDEX_FILE, META_FILE), embedd, ExplainITQuery(),
+            ICCVisualizer(), HistogramVisualizer())
 
 @st.cache_data(show_spinner=False, ttl=1800)  # Caching images
 def get_images_batch(urls):
@@ -66,7 +69,7 @@ def get_images(img_url, TIMEOUT=TIMEOUT, WIKI_HEADERS=WIKI_HEADERS):
         return None
 
 
-searcher, indexer, embedder, explain_it_query = get_tools()
+searcher, indexer, embedder, explain_it_query, icc_visualizer, histogram_visualizer = get_tools()
 
 
 def load_index():
@@ -158,8 +161,12 @@ if "search_results" in st.session_state and st.session_state["search_results"]:
 
                 img_obj = image_cache.get(r.get("image_url"))
                 if img_obj is not None:
-                    
+
                     st.image(img_obj, width='stretch')
+                    if st.button("Pose Composition (ICC++)", key=f"icc_btn_{i}", width='stretch'):
+                        icc_visualizer.show_dialog(r.get("title", "Untitled"), img_obj)
+                    if st.button("Color Histogram", key=f"hist_btn_{i}", width='stretch'):
+                        histogram_visualizer.show_dialog(r.get("title", "Untitled"), img_obj)
                 else:
                     st.warning("Failed to download artwork.")
             else:
