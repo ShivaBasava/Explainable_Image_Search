@@ -20,6 +20,8 @@ from ExplainITQuery import ExplainITQuery
 from ConceptExplainer import ConceptExplainer
 from feature_visualization.ICC_P_P import ICCVisualizer
 from feature_visualization.Image_color_histogram import HistogramVisualizer
+from XAI_Methods.GRAD_CAM import GradCAMExplainer
+from XAI_Methods.Integrated_Gradients import IntegratedGradientsExplainer
 
 import streamlit as st
 from config import get_config
@@ -43,7 +45,8 @@ st.set_page_config(page_title="Explainable Search", layout="wide")
 def get_tools():
     embedd = ArtEmbedd()
     return (SearchArtWorks(), ArtIndexer(INDEX_FILE, META_FILE), embedd, ExplainITQuery(),
-            ICCVisualizer(), HistogramVisualizer())
+            ICCVisualizer(), HistogramVisualizer(), GradCAMExplainer(embedd),
+            IntegratedGradientsExplainer(embedd))
 
 @st.cache_data(show_spinner=False, ttl=1800)  # Caching images
 def get_images_batch(urls):
@@ -69,7 +72,8 @@ def get_images(img_url, TIMEOUT=TIMEOUT, WIKI_HEADERS=WIKI_HEADERS):
         return None
 
 
-searcher, indexer, embedder, explain_it_query, icc_visualizer, histogram_visualizer = get_tools()
+(searcher, indexer, embedder, explain_it_query, icc_visualizer, histogram_visualizer,
+ gradcam_explainer, integrated_gradients_explainer) = get_tools()
 
 
 def load_index():
@@ -167,6 +171,10 @@ if "search_results" in st.session_state and st.session_state["search_results"]:
                         icc_visualizer.show_dialog(r.get("title", "Untitled"), img_obj)
                     if st.button("Color Histogram", key=f"hist_btn_{i}", width='stretch'):
                         histogram_visualizer.show_dialog(r.get("title", "Untitled"), img_obj)
+                    if st.button("Grad-CAM (Query Relevance)", key=f"gradcam_btn_{i}", width='stretch'):
+                        gradcam_explainer.show_dialog(r.get("title", "Untitled"), img_obj, query)
+                    if st.button("Integrated Gradients", key=f"ig_btn_{i}", width='stretch'):
+                        integrated_gradients_explainer.show_dialog(r.get("title", "Untitled"), img_obj, query)
                 else:
                     st.warning("Failed to download artwork.")
             else:
