@@ -5,7 +5,7 @@ Global configuration loader for both apps Webapp-0 & 1
 import os
 import sys
 import tomllib
-CONFIG_PATH = "/Explainable-Image-Search/app_config.toml"
+CONFIG_PATH = "app_config.toml"
 CONFIG = {}
 
 try:

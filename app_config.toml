@@ -1,8 +1,8 @@
 MODEL_ID = "google/siglip2-base-patch16-naflex"
 SPARQL_ENDPOINT = "https://query.wikidata.org/sparql"
 TIMEOUT = 30
-INDEX_FILE = "/Explainable_Image_Seacrh/demo_data/_art.index"
-META_FILE = "/Explainable_Image_Seacrh/demo_data/_art.meta.json"
+INDEX_FILE = "demo_data/_art.index"
+META_FILE = "demo_data/_art.meta.json"
 SK_INDEX = "faiss_index"
 SK_META = "faiss_meta"
 
