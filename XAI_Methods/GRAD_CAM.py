@@ -252,7 +252,7 @@ class GradCAMExplainer:
 
         query_desc = f"the query “{query}”" if isinstance(query, str) else "the query image"
 
-        @st.dialog(f"Grad-CAM — {title}", width="large")
+        @st.dialog(f"Grad-CAM — {title}", width="small")
         def _render_dialog():
             with st.spinner("Computing Grad-CAM…"):
                 try:

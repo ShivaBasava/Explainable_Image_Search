@@ -213,7 +213,7 @@ class IntegratedGradientsExplainer:
 
         query_desc = f"the query “{query}”" if isinstance(query, str) else "the query image"
 
-        @st.dialog(f"Integrated Gradients — {title}", width="large")
+        @st.dialog(f"Integrated Gradients — {title}", width="small")
         def _render_dialog():
             with st.spinner(f"Computing Integrated Gradients ({self.STEPS} steps)…"):
                 try:

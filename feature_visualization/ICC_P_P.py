@@ -330,7 +330,7 @@ class ICCVisualizer:
     def show_dialog(self, title: str, image: Image.Image):
         """Compute the ICC++ overlay and open a Streamlit dialog to display it."""
 
-        @st.dialog(f"Image Composition Canvas — {title}", width="large")
+        @st.dialog(f"Image Composition Canvas — {title}", width="medium")
         def _render_dialog():
             with st.spinner("Computing pose composition canvas…"):
                 try:

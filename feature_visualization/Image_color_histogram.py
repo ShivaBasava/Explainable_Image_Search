@@ -97,7 +97,7 @@ class HistogramVisualizer:
     def show_dialog(self, title: str, image: Image.Image):
         """Compute the color histogram and open a Streamlit dialog to display it."""
 
-        @st.dialog(f"Color Histogram — {title}", width="large")
+        @st.dialog(f"Color Histogram — {title}", width="small")
         def _render_dialog():
             with st.spinner("Computing color histogram…"):
                 try:
