@@ -169,7 +169,7 @@ class ConceptExplainer:
 
         with c1:
             label = "Query Image" if isinstance(query, Image.Image) else "Query Text"
-            with st.expander("Query Semantic Concepts", expanded=True):
+            with st.expander("Query Semantic Concepts", expanded=False):
                 self._bar(top_q, f"{label} — Top {top_n} Concepts")
 
                 # Extract up to 3 highest scoring text features, for display
@@ -187,7 +187,7 @@ class ConceptExplainer:
                         f"suggesting semantic concepts likely contributed to the retrieved results." )
 
         with c2:
-            with st.expander("Shared Semantic Concepts Across Results", expanded=True):
+            with st.expander("Shared Semantic Concepts Across Results", expanded=False):
                 shared = self.listwise_overlap(results, query_act, n_listwise)
                 self._bar(shared, f"Shared Semantic Concepts Across Top-{len(results)} Results")
 

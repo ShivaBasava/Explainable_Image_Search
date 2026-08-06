@@ -107,28 +107,32 @@ concept_explainer = ConceptExplainer(embedder, index, meta)
 
 st.title("iArt xAI Search")
 
-
-mode  = st.radio("Query type", RADIO_MODES, horizontal=True)
-top_k = st.slider("Top-K", 1, 10, 5)
-
 query = None
+top_n_tokens = 5
+
+with st.sidebar:
+    st.header("Search")
+
+    mode  = st.radio("Query type", RADIO_MODES, horizontal=True)
+    top_k = st.slider("Top-K", 1, 100, 12)
+
+    # Query input
+    if mode == RADIO_MODES[0]:
+        query_text = st.text_input("Query")
+        if query_text.strip():
+            query = query_text.strip()
+        with st.expander("Keyword explanation settings", expanded=True):
+            top_n_tokens = st.slider("Max keywords", 1, 10, 5)
+    else:
+        uploaded = st.file_uploader("Upload image", type=FILE_EXT)
+        if uploaded:
+            query = Image.open(uploaded).convert("RGB")
+            st.image(query, caption="Query image", width='stretch')
+
+    search_clicked = st.button("Search", width='stretch')
 
 
-# Query input
-if mode == RADIO_MODES[0]:
-    query_text = st.text_input("Query")
-    if query_text.strip():
-        query = query_text.strip()
-    with st.expander("Keyword explanation settings", expanded=True):
-        top_n_tokens = st.slider("Max keywords", 1, 10, 5)
-else:
-    uploaded = st.file_uploader("Upload image", type=FILE_EXT)
-    if uploaded:
-        query = Image.open(uploaded).convert("RGB")
-        st.image(query, caption="Query image", width=300)
-
-
-if query is not None and st.button("Search"):
+if query is not None and search_clicked:
     with st.spinner("Searching…"):
         _, results = indexer.perform_similarity_search(
             query, embedder.get_embedding, index, meta, top_k=top_k )
@@ -152,139 +156,166 @@ if "search_results" in st.session_state and st.session_state["search_results"]:
     query = st.session_state["search_query"]
     mode = st.session_state.get("search_mode", RADIO_MODES[0])
 
+    # Concept-level explanation from metadata ( displayed for both query types)
+    with st.spinner("Computing concept alignments…"):
+        concept_explainer.render(query=query, results=results, top_n=5)
+    st.divider()
+
     # Results grid
     st.subheader(f"Top {len(results)} results")
     cols = st.columns(min(5, len(results)))
 
     all_urls = [r.get("image_url") for r in results if r.get("image_url")]
-    image_cache = get_images_batch(all_urls)    
+    image_cache = get_images_batch(all_urls)
+
+    def _show_detailed_explanation(title, result_item, result_img, idx):
+        """Detailed per-result explanation, opened as a wide dialog so charts
+        aren't squeezed into the narrow results-grid column."""
+
+        @st.dialog(f"Detailed Explanation — {title}", width="large")
+        def _render_dialog():
+            with st.expander("Semantic Concept similarity for this result", expanded=True):
+                st.caption("Shows which semantic concepts are strongly present in both the Query and this artwork.")
+                with st.spinner("Computing concept overlap…"):
+                    concept_explainer.render_single_result(query, result_item, n=5)
+
+            st.divider()
+            explanation_label = "Keyword Importance" if isinstance(query, str) else "Region Importance Heatmap"
+            with st.expander(explanation_label, expanded=True):
+                if isinstance(query, str):
+
+                    # Text query - token importance
+                    st.markdown("**Keyword importance (without stopwords)**")
+                    st.caption("The chart displays the score drop when each word is removed from the Query.")
+                    with st.spinner("Computing keyword importances…"):
+                        token_imps = explain_it_query.explain_text_query( query, result_item.get("image_url"),
+                                            embedder.get_embedding, top_n=top_n_tokens )
+
+                    if token_imps:
+                        tok_col1, tok_col2 = st.columns(2)
+                        with tok_col1:
+
+                            df_tok = pd.DataFrame(token_imps)
+
+                            df_tok["importance_ui"] = df_tok["importance"] * 100.0
+
+                            df_tok = df_tok.set_index("token_idx")
+                            df_tok = df_tok[["importance_ui"]]
+                            df_tok.columns = ["Importance (% points drop)"]
+
+                            df_tok.index = [t.split("_", 1)[1] for t in df_tok.index]
+
+                            st.bar_chart(df_tok, horizontal=True, y="Importance (% points drop)")
+
+                        with tok_col2:
+                            st.image(result_img, caption="Result Match", width="stretch")
+                    else:
+                        st.info("Could not compute token importances for this result.")
+
+                else:
+
+                    grid_size = st.slider( "Patch grid size for heatmap",
+                        min_value=5, max_value=8, value=6, step=1,
+                        help="Larger grid gives finer resolution but slower computation.",
+                        key=f"grid_size_{idx}" )
+                    # Image query- patch occlusion sensitivity
+                    st.markdown("**Region importance heatmap**")
+                    st.caption("The heatmap displays regions that most influenced the match; "
+                                    "changing them may reduce the similarity score.")
+                    st.caption("Red = region that most helped the match; Blue = region that was ignored.")
+                    with st.spinner("Computing region importance…"):
+                        result_heatmap, r_patch_metrics = explain_it_query.explain_image_query( query, result_item.get("image_url"),
+                                                            embedder.get_embedding, grid=grid_size  )
+
+                    heat_col1, heat_col2, heat_col3 = st.columns(3)
+                    with heat_col1:
+                        st.image(query, caption="Original Query", width="stretch")
+                    with heat_col2:
+                        st.image(result_heatmap, caption="Region importance", width="stretch")
+                        if r_patch_metrics:
+
+                            st.caption( f"**Highest(Red) region:** {r_patch_metrics.get('highest', {}).get('importance')*100.0:.2f} % points at "
+                                    f"Row {r_patch_metrics.get('highest', {}).get('row')}, Col {r_patch_metrics.get('highest', {}).get('col')}"   )
+                            st.caption(
+                                f"**Lowest(Blue) region:** {r_patch_metrics.get('lowest', {}).get('importance')*100.0:.2f} % points at "
+                                f"Row {r_patch_metrics.get('lowest', {}).get('row')}, Col {r_patch_metrics.get('lowest', {}).get('col')}"    )
+
+                    with heat_col3:
+                        st.image(result_img, caption="Original Retrieved result", width="stretch")
+
+        _render_dialog()
+
     for i, r in enumerate(results):
         with cols[i % len(cols)]:   
             img_url = r.get("image_url")
+            img_obj = None
             if img_url:
 
                 img_obj = image_cache.get(r.get("image_url"))
                 if img_obj is not None:
-
                     st.image(img_obj, width='stretch')
-                    if st.button("Pose Composition (ICC++)", key=f"icc_btn_{i}", width='stretch'):
-                        icc_visualizer.show_dialog(r.get("title", "Untitled"), img_obj)
-                    if st.button("Color Histogram", key=f"hist_btn_{i}", width='stretch'):
-                        histogram_visualizer.show_dialog(r.get("title", "Untitled"), img_obj)
-                    if st.button("Grad-CAM (Query Relevance)", key=f"gradcam_btn_{i}", width='stretch'):
-                        gradcam_explainer.show_dialog(r.get("title", "Untitled"), img_obj, query)
-                    if st.button("Integrated Gradients", key=f"ig_btn_{i}", width='stretch'):
-                        integrated_gradients_explainer.show_dialog(r.get("title", "Untitled"), img_obj, query)
                 else:
                     st.warning("Failed to download artwork.")
             else:
                 st.warning("Missing image URL.")
             st.caption(f"**{r.get('title')}** | *{r.get('artist')}*")
 
-            st.progress(  int(r.get("similarity")),
-                text=f"Similarity: {r.get('similarity'):.1f}%"#  (cosine: {r.get('cosine_score'):.3f})"
+            active_panel = st.segmented_control(
+                "Details", ["Meta Data", "Image Composition", "XAI Methods"],
+                selection_mode="single", default=None, key=f"panel_{i}",
+                label_visibility="collapsed", width='stretch',
             )
 
-            depicts = r.get('depicts', '')
-            if depicts:
-                st.caption(f"**Depicts**: {depicts[:100]}") #TODO
-            
-            qid = r.get('qid', '')
-            if qid:
-                st.caption(f"**QID**: {qid}")  
+            if img_obj is not None and st.button("Detailed Explanation", key=f"detail_btn_{i}", width='stretch'):
+                _show_detailed_explanation(r.get("title", "Untitled"), r, img_obj, i)
 
+            if active_panel == "Meta Data":
+                st.progress(  int(r.get("similarity")),
+                    text=f"Similarity: {r.get('similarity'):.1f}%"#  (cosine: {r.get('cosine_score'):.3f})"
+                )
+                st.caption(f"**Title**: {r.get('title', 'Untitled')}")
+                st.caption(f"**Artist**: {r.get('artist', 'Unknown')}")
 
-    # Concept-level explanation from metadata ( displayed for both query types)
-    st.divider()
-    with st.spinner("Computing concept alignments…"):
-        concept_explainer.render(query=query, results=results, top_n=5)
+                depicts = r.get('depicts', '')
+                if depicts:
+                    st.caption(f"**Depicts**: {depicts}")
 
-    st.divider()
-    with st.expander("Detailed explanation for a selected result", expanded=False):
+                description = r.get('description', '')
+                if description:
+                    st.caption(f"**Description**: {description}")
 
-        # User may choose a result-image to explain
-        result_options = [
-            f"#({i+1})  {r.get('title', 'Untitled')[:40]} (sim {r.get('similarity', 0):.1f}%)"
-            for i, r in enumerate(results)  ]
-        selected_idx = st.selectbox(
-            "Select result to explain", options=range(len(results)),
-            format_func=lambda i: result_options[i] )
-        top = results[selected_idx]
+                qid = r.get('qid', '')
+                if qid:
+                    st.caption(f"**QID**: {qid}")
 
-        st.caption( f"**{top.get('title')}** by *{top.get('artist').title()}*  |  "
-            f"Similarity: {top.get('similarity'):.1f}%" )
+                wikidata_url = r.get('wikidata_url', '')
+                if wikidata_url:
+                    st.caption(f"**Wikidata**: {wikidata_url}")
 
-        top_img_obj = image_cache.get(top.get("image_url"))
+                st.caption(f"**Cosine score**: {r.get('cosine_score', 0):.4f}")
 
-        st.divider()
-        with st.expander("Semantic Concept similarity for the selected result", expanded=False):
-
-            st.caption("Shows which semantic concepts are strongly present in both the Query and this artwork.")
-            with st.spinner("Computing concept overlap…"):
-                concept_explainer.render_single_result(query, top, n=5)
-    
-        st.divider()
-        mode = "Keyword Importance" if isinstance(query, str) else "Region Importance Heatmap"
-        with st.expander(f"{mode}", expanded=False):
-            if isinstance(query, str):
-
-                # Text query - token importance
-                st.markdown("**Keyword importance (without stopwords)**")
-                st.caption("The chart displays the score drop when each word is removed from the Query.")
-                with st.spinner("Computing keyword importances…"):
-                    token_imps = explain_it_query.explain_text_query( query, top.get("image_url"), 
-                                        embedder.get_embedding, top_n=top_n_tokens )
-
-                if token_imps:
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        
-                        df_tok = pd.DataFrame(token_imps)
-                                            
-                        df_tok["importance_ui"] = df_tok["importance"] * 100.0
-                                            
-                        df_tok = df_tok.set_index("token_idx")
-                        df_tok = df_tok[["importance_ui"]]
-                        df_tok.columns = ["Importance (% points drop)"]
-                        
-                        df_tok.index = [idx.split("_", 1)[1] for idx in df_tok.index]
-                        
-                        st.bar_chart(df_tok, horizontal=True, y="Importance (% points drop)")
-
-                    with col2:
-                        st.image(top_img_obj, caption=f"Result Match", width="stretch")
+            elif active_panel == "Image Composition":
+                if img_obj is not None:
+                    icc_col, hist_col = st.columns(2)
+                    with icc_col:
+                        if st.button("Pose Composition (ICC++)", key=f"icc_btn_{i}", width='stretch'):
+                            icc_visualizer.show_dialog(r.get("title", "Untitled"), img_obj)
+                    with hist_col:
+                        if st.button("Color Histogram", key=f"hist_btn_{i}", width='stretch'):
+                            histogram_visualizer.show_dialog(r.get("title", "Untitled"), img_obj)
                 else:
-                    st.info("Could not compute token importances for this result.")
+                    st.info("Artwork image unavailable.")
 
-            else:
-
-                grid_size = st.slider( "Patch grid size for heatmap", 
-                    min_value=5, max_value=8, value=6, step=1,
-                    help="Larger grid gives finer resolution but slower computation." )
-                # Image query- patch occlusion sensitivity
-                st.markdown("**Region importance heatmap**")
-                st.caption("The heatmap displays regions that most influenced the match;\
-                                changing them may reduce the similarity score.")
-                st.caption("Red = region that most helped the match; Blue = region that was ignored.")
-                with st.spinner("Computing region importance…"):
-                    result_heatmap, r_patch_metrics = explain_it_query.explain_image_query( query, top.get("image_url"), 
-                                                        embedder.get_embedding, grid=grid_size  )
-
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.image(query, caption="Original Query", width="stretch")
-                with col2:
-                    st.image(result_heatmap, caption="Region importance", width="stretch")
-                    if r_patch_metrics:
-
-                        st.caption( f"**Highest(Red) region:** {r_patch_metrics.get('highest', {}).get('importance')*100.0:.2f} % points at "
-                                f"Row {r_patch_metrics.get('highest', {}).get('row')}, Col {r_patch_metrics.get('highest', {}).get('col')}"   )
-                        st.caption(
-                            f"**Lowest(Blue) region:** {r_patch_metrics.get('lowest', {}).get('importance')*100.0:.2f} % points at "
-                            f"Row {r_patch_metrics.get('lowest', {}).get('row')}, Col {r_patch_metrics.get('lowest', {}).get('col')}"    )
-                        
-                with col3:
-                    st.image(top_img_obj, caption="Original Retrieved result", width="stretch")
-        st.divider()
+            elif active_panel == "XAI Methods":
+                if img_obj is not None:
+                    gradcam_col, ig_col = st.columns(2)
+                    with gradcam_col:
+                        if st.button("Grad-CAM (Query Relevance)", key=f"gradcam_btn_{i}", width='stretch'):
+                            gradcam_explainer.show_dialog(r.get("title", "Untitled"), img_obj, query)
+                    with ig_col:
+                        if st.button("Integrated Gradients", key=f"ig_btn_{i}", width='stretch'):
+                            integrated_gradients_explainer.show_dialog(r.get("title", "Untitled"), img_obj, query)
+                else:
+                    st.info("Artwork image unavailable.")
 
 
