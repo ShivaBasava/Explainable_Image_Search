@@ -7,6 +7,7 @@ Search app (WebApp 1).
 
 """
 import io
+import base64
 import pandas as pd
 import numpy as np
 import requests
@@ -37,6 +38,7 @@ SK_META      = get_config("SK_META")
 FILE_EXT     = tuple(get_config("FILE_EXT"))
 
 RADIO_MODES = ["Text description", "Upload image"]
+LOGO_FILE = "demo_data/XAI_Search_logo.png"
 
 st.set_page_config(page_title="Explainable Search", layout="wide")
 
@@ -105,43 +107,175 @@ meta  = st.session_state[SK_META]
 
 concept_explainer = ConceptExplainer(embedder, index, meta)
 
-st.title("iArt xAI Search")
+@st.cache_data(show_spinner=False)
+def _load_logo_data_uri(path, max_width=160):
+    """Downscale the logo once per process and return it as a base64 data URI,
+    so it can be embedded inline (as a clickable <a><img></a>) without
+    re-reading/re-encoding the full-size file on every rerun."""
+    try:
+        logo_img = Image.open(path).convert("RGBA")
+    except Exception:
+        return None
+    if logo_img.width > max_width:
+        ratio = max_width / logo_img.width
+        logo_img = logo_img.resize((max_width, int(logo_img.height * ratio)), Image.LANCZOS)
+    buf = io.BytesIO()
+    logo_img.save(buf, format="PNG")
+    encoded = base64.b64encode(buf.getvalue()).decode()
+    return f"data:image/png;base64,{encoded}"
+
+
+EXAMPLE_QUERIES = ["Portrait of a smiling man", "A castle near the river"]
+
+
+def _run_search(query_value, mode_value, top_k_value):
+    """Embed + search, storing results into session state. Shared by the
+    sidebar Search button and the landing-page example chips."""
+    with st.spinner("Searching…"):
+        _, results = indexer.perform_similarity_search(
+            query_value, embedder.get_embedding, index, meta, top_k=top_k_value )
+    st.session_state["search_query"] = query_value
+    st.session_state["search_results"] = results
+    st.session_state["search_mode"] = mode_value
+
+
+def _select_example_query(example_text, top_k_value):
+    """Button on_click callback: runs BEFORE the script reruns, so it's safe
+    to set the sidebar widgets' session_state here (setting it afterwards,
+    once those widgets have already been instantiated in a run, raises)."""
+    st.session_state["query_mode_radio"] = RADIO_MODES[0]
+    st.session_state["query_text_input"] = example_text
+    _run_search(example_text, RADIO_MODES[0], top_k_value)
+
+
+st.markdown(
+    "<style> h1 { font-size: 3.5rem !important; font-weight: 800; } </style>",
+    unsafe_allow_html=True,
+)
+
+_logo_uri = _load_logo_data_uri(LOGO_FILE)
+if _logo_uri:
+    st.markdown(
+        f"""
+        <a href="/" target="_self" style="text-decoration:none; color:inherit;">
+            <div style="display:flex; align-items:center; justify-content:flex-start;
+                        gap:0.75rem; cursor:pointer;">
+                <img src="{_logo_uri}" alt="XAI Search logo"
+                     style="height:64px; transition: transform 0.15s ease;"
+                     onmouseover="this.style.transform='scale(1.06)'"
+                     onmouseout="this.style.transform='scale(1)'">
+                <h1 style="margin:0; font-size:3.5rem; font-weight:800;">iArt xAI Search</h1>
+            </div>
+        </a>
+        """,
+        unsafe_allow_html=True,
+    )
+else:
+    st.title("iArt xAI Search")
 
 query = None
 top_n_tokens = 5
 
+SIDEBAR_STYLE = """
+<style>
+/* -- Search heading -------------------------------------------------- */
+[data-testid="stSidebar"] h2 {
+    font-size: 2.75rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+}
+
+/* -- Consistent label / field spacing --------------------------------- */
+[data-testid="stSidebar"] label {
+    font-weight: 500;
+}
+[data-testid="stSidebar"] div[data-testid="stRadio"],
+[data-testid="stSidebar"] div[data-testid="stSlider"],
+[data-testid="stSidebar"] div[data-testid="stTextInput"],
+[data-testid="stSidebar"] div[data-testid="stFileUploader"] {
+    margin-bottom: 1rem;
+}
+
+/* -- Radio buttons: bigger clickable area + accent color --------------- */
+[data-testid="stSidebar"] div[role="radiogroup"] {
+    gap: 0.6rem;
+}
+[data-testid="stSidebar"] div[role="radiogroup"] label {
+    font-size: 1.05rem;
+    padding: 0.55rem 1rem;
+    border-radius: 10px;
+    border: 1.5px solid rgba(128, 128, 128, 0.35);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
+    border-color: var(--primary-color, #ff4b4b);
+    background-color: color-mix(in srgb, var(--primary-color, #ff4b4b) 10%, transparent);
+}
+[data-testid="stSidebar"] div[role="radiogroup"] label [data-baseweb="radio"] > div:first-child {
+    width: 1.2rem;
+    height: 1.2rem;
+}
+
+/* -- Search button: filled accent color, slightly taller --------------- */
+[data-testid="stSidebar"] div[data-testid="stButton"] button {
+    height: 3rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+    border-radius: 10px;
+}
+
+/* -- Sliders: thicker track, larger thumb ------------------------------ */
+[data-testid="stSidebar"] div[data-testid="stSlider"] [data-baseweb="slider"] > div:nth-child(2) {
+    height: 8px;
+}
+[data-testid="stSidebar"] div[data-testid="stSlider"] [role="slider"] {
+    width: 22px;
+    height: 22px;
+}
+</style>
+"""
+
 with st.sidebar:
+    st.markdown(SIDEBAR_STYLE, unsafe_allow_html=True)
     st.header("Search")
 
-    mode  = st.radio("Query type", RADIO_MODES, horizontal=True)
-    top_k = st.slider("Top-K", 1, 100, 12)
+    mode = st.radio("Query type", RADIO_MODES, horizontal=True, key="query_mode_radio")
+
+    top_k_col, top_k_val_col = st.columns([5, 1])
+    with top_k_col:
+        top_k = st.slider("Top-K", 1, 100, 12, label_visibility="visible")
+    with top_k_val_col:
+        st.markdown(
+            f"<div style='text-align:right; padding-top:2.3rem; font-weight:600;'>{top_k}</div>",
+            unsafe_allow_html=True,
+        )
 
     # Query input
     if mode == RADIO_MODES[0]:
-        query_text = st.text_input("Query")
+        query_text = st.text_input("Search Query", key="query_text_input")
         if query_text.strip():
             query = query_text.strip()
         with st.expander("Keyword explanation settings", expanded=True):
-            top_n_tokens = st.slider("Max keywords", 1, 10, 5)
+            kw_col, kw_val_col = st.columns([5, 1])
+            with kw_col:
+                top_n_tokens = st.slider("Max keywords", 1, 10, 5)
+            with kw_val_col:
+                st.markdown(
+                    f"<div style='text-align:right; padding-top:2.3rem; font-weight:600;'>{top_n_tokens}</div>",
+                    unsafe_allow_html=True,
+                )
     else:
         uploaded = st.file_uploader("Upload image", type=FILE_EXT)
         if uploaded:
             query = Image.open(uploaded).convert("RGB")
             st.image(query, caption="Query image", width='stretch')
 
-    search_clicked = st.button("Search", width='stretch')
+    search_clicked = st.button("Search", type="primary", width='stretch')
 
 
 if query is not None and search_clicked:
-    with st.spinner("Searching…"):
-        _, results = indexer.perform_similarity_search(
-            query, embedder.get_embedding, index, meta, top_k=top_k )
-
-    # placing in session state
-    st.session_state["search_query"] = query
-    st.session_state["search_results"] = results
-
-    st.session_state["search_mode"] = mode
+    _run_search(query, mode, top_k)
 
 elif query is None:
     #to clear earlier results
@@ -317,5 +451,59 @@ if "search_results" in st.session_state and st.session_state["search_results"]:
                             integrated_gradients_explainer.show_dialog(r.get("title", "Untitled"), img_obj, query)
                 else:
                     st.info("Artwork image unavailable.")
+
+else:
+    # Landing state — no search performed yet. Centered, interactive hero.
+    st.markdown(
+        """
+        <style>
+        .st-key-landing_hero [data-testid="stButton"] button {
+            border-radius: 999px;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+        }
+        .st-key-landing_hero [data-testid="stButton"] button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+            border-color: var(--primary-color, #ff4b4b);
+            color: var(--primary-color, #ff4b4b);
+        }
+        .st-key-landing_hero .landing-tagline {
+            text-align: center;
+            font-size: 2rem;
+            opacity: 0.85;
+            margin-bottom: 1.75rem;
+        }
+        .st-key-landing_hero .landing-try {
+            text-align: center;
+            font-size: 1.3rem;
+            font-weight: 600;
+            opacity: 0.7;
+            margin-bottom: 0.5rem;
+        }
+        .st-key-landing_hero .landing-spacer {
+            height: 2rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.container(key="landing_hero"):
+        st.markdown("<div class='landing-spacer'></div>", unsafe_allow_html=True)
+        _, hero_col, _ = st.columns([1, 2, 1])
+        with hero_col:
+            st.markdown(
+                "<div class='landing-tagline'>Search using text or upload an image.</div>",
+                unsafe_allow_html=True,
+            )
+
+            st.markdown("<div class='landing-try'>Try:</div>", unsafe_allow_html=True)
+            example_cols = st.columns(len(EXAMPLE_QUERIES))
+            for example_col, example in zip(example_cols, EXAMPLE_QUERIES):
+                with example_col:
+                    st.button(
+                        example, key=f"example_{example}", width='stretch',
+                        on_click=_select_example_query, args=(example, top_k),
+                    )
 
 
