@@ -292,12 +292,12 @@ class ICCVisualizer:
         ov = image.copy()
         for line in icc["poselines"]:
             (x1, y1), (x2, y2) = line.coords[0], line.coords[1]
-            cv2.line(ov, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 4)
+            cv2.line(ov, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 12)
 
         if draw_cones:
             for cone in icc["cones"]:
                 pts = np.array(cone.exterior.coords, np.int32)
-                cv2.polylines(ov, [pts], True, (255, 0, 255), 2)
+                cv2.polylines(ov, [pts], True, (255, 0, 255), 8)
 
         for c in icc["action_centers"]:
             cv2.circle(ov, (int(c.x), int(c.y)), 8, (255, 255, 0), -1)
@@ -307,10 +307,10 @@ class ICCVisualizer:
     # ------------------------------------------------------------------
     # Public entry point for proto_type_main.py
     # ------------------------------------------------------------------
-    def get_icc_overlay(self, image: Image.Image) -> tuple:
+    def _analyze(self, image: Image.Image) -> tuple:
         """
-        Run ICC++ on an already-loaded artwork image and return
-        (PIL overlay image, stats dict).
+        Run ICC++ end-to-end on an already-loaded artwork image and return
+        (PIL overlay image, stats dict, raw icc dict).
 
         stats keys: poselines (int), action_centers (int)
         """
@@ -322,33 +322,89 @@ class ICCVisualizer:
             "poselines": len(icc["poselines"]),
             "action_centers": len(icc["action_centers"]),
         }
+        return pil_out, stats, icc
+
+    def get_icc_overlay(self, image: Image.Image) -> tuple:
+        """
+        Run ICC++ on an already-loaded artwork image and return
+        (PIL overlay image, stats dict).
+
+        stats keys: poselines (int), action_centers (int)
+        """
+        pil_out, stats, _ = self._analyze(image)
         return pil_out, stats
 
     # ------------------------------------------------------------------
     # Streamlit dialog
     # ------------------------------------------------------------------
-    def show_dialog(self, title: str, image: Image.Image):
-        """Compute the ICC++ overlay and open a Streamlit dialog to display it."""
+    @staticmethod
+    def _legend_caption():
+        st.caption(
+            "Green = poselines (nose -> mid-hip). Magenta = direction cones. "
+            "Yellow = action centers (cone intersections)."
+        )
 
-        @st.dialog(f"Image Composition Canvas — {title}", width="medium")
+    def show_dialog(self, title: str, image: Image.Image, query=None):
+        """Compute the ICC++ overlay and open a Streamlit dialog to display it.
+
+        When `query` is a PIL Image (image-query search), the query image's
+        pose structure is analyzed and shown side by side with the result's,
+        plus an ICC++ pose-similarity score between them. For a text query
+        (or no query), only the result image is analyzed, as before.
+        """
+        is_image_query = isinstance(query, Image.Image)
+
+        @st.dialog(f"Image Composition Canvas — {title}", width="medium" if is_image_query else "small")
         def _render_dialog():
-            with st.spinner("Computing pose composition canvas…"):
-                try:
-                    overlay_img, stats = self.get_icc_overlay(image)
-                except Exception as e:
-                    st.error(f"Could not compute ICC++ overlay: {e}")
-                    return
+            if is_image_query:
+                with st.spinner("Computing pose composition canvas…"):
+                    try:
+                        q_overlay, q_stats, q_icc = self._analyze(query)
+                        r_overlay, r_stats, r_icc = self._analyze(image)
+                    except Exception as e:
+                        st.error(f"Could not compute ICC++ overlay: {e}")
+                        return
 
-            st.image(overlay_img, width="stretch")
-            st.caption(
-                "Green = poselines (nose -> mid-hip). Magenta = direction cones. "
-                "Yellow = action centers (cone intersections)."
-            )
-            st.caption(
-                f"**Detected poselines:** {stats['poselines']}  |  "
-                f"**Action centers:** {stats['action_centers']}"
-            )
-            if stats["poselines"] == 0:
-                st.info("No human figures with a usable pose were detected in this artwork.")
+                q_col, r_col = st.columns(2)
+                with q_col:
+                    st.markdown("**Query image**")
+                    st.image(q_overlay, width="stretch")
+                    st.caption(
+                        f"Poselines: {q_stats['poselines']}  |  Action centers: {q_stats['action_centers']}"
+                    )
+                with r_col:
+                    st.markdown("**Result image**")
+                    st.image(r_overlay, width="stretch")
+                    st.caption(
+                        f"Poselines: {r_stats['poselines']}  |  Action centers: {r_stats['action_centers']}"
+                    )
+
+                self._legend_caption()
+
+                if q_stats["poselines"] and r_stats["poselines"]:
+                    r_hr, r_nmd, r_cr = self.image_similarity(q_icc, r_icc)
+                    st.caption(
+                        f"**Pose similarity (ICC++):** hit-rate {r_hr:.2f}  |  "
+                        f"normalized match distance {r_nmd:.2f}  |  combined {r_cr:.2f}"
+                    )
+                else:
+                    st.info("Pose similarity needs at least one detected figure in both images.")
+
+            else:
+                with st.spinner("Computing pose composition canvas…"):
+                    try:
+                        overlay_img, stats, _ = self._analyze(image)
+                    except Exception as e:
+                        st.error(f"Could not compute ICC++ overlay: {e}")
+                        return
+
+                st.image(overlay_img, width="stretch")
+                self._legend_caption()
+                st.caption(
+                    f"**Detected poselines:** {stats['poselines']}  |  "
+                    f"**Action centers:** {stats['action_centers']}"
+                )
+                if stats["poselines"] == 0:
+                    st.info("No human figures with a usable pose were detected in this artwork.")
 
         _render_dialog()
