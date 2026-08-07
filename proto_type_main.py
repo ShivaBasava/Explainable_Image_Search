@@ -299,7 +299,7 @@ if "search_results" in st.session_state and st.session_state["search_results"]:
                     icc_col, hist_col = st.columns(2)
                     with icc_col:
                         if st.button("Pose Composition (ICC++)", key=f"icc_btn_{i}", width='stretch'):
-                            icc_visualizer.show_dialog(r.get("title", "Untitled"), img_obj)
+                            icc_visualizer.show_dialog(r.get("title", "Untitled"), img_obj, query)
                     with hist_col:
                         if st.button("Color Histogram", key=f"hist_btn_{i}", width='stretch'):
                             histogram_visualizer.show_dialog(r.get("title", "Untitled"), img_obj)
