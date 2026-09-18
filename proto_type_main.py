@@ -21,8 +21,10 @@ from ExplainITQuery import ExplainITQuery
 from ConceptExplainer import ConceptExplainer
 from feature_visualization.ICC_P_P import ICCVisualizer
 from feature_visualization.Image_color_histogram import HistogramVisualizer
+from feature_visualization.UMAP import UMAPVisualizer
 from XAI_Methods.GRAD_CAM import GradCAMExplainer
 from XAI_Methods.Integrated_Gradients import IntegratedGradientsExplainer
+from XAI_Methods.Attention_Maps import AttentionMapsExplainer
 
 import streamlit as st
 from config import get_config
@@ -48,7 +50,7 @@ def get_tools():
     embedd = ArtEmbedd()
     return (SearchArtWorks(), ArtIndexer(INDEX_FILE, META_FILE), embedd, ExplainITQuery(),
             ICCVisualizer(), HistogramVisualizer(), GradCAMExplainer(embedd),
-            IntegratedGradientsExplainer(embedd))
+            IntegratedGradientsExplainer(embedd), AttentionMapsExplainer(embedd))
 
 @st.cache_data(show_spinner=False, ttl=1800)  # Caching images
 def get_images_batch(urls):
@@ -75,7 +77,7 @@ def get_images(img_url, TIMEOUT=TIMEOUT, WIKI_HEADERS=WIKI_HEADERS):
 
 
 (searcher, indexer, embedder, explain_it_query, icc_visualizer, histogram_visualizer,
- gradcam_explainer, integrated_gradients_explainer) = get_tools()
+ gradcam_explainer, integrated_gradients_explainer, attention_maps_explainer) = get_tools()
 
 
 def load_index():
@@ -106,6 +108,7 @@ index = st.session_state[SK_INDEX]
 meta  = st.session_state[SK_META]
 
 concept_explainer = ConceptExplainer(embedder, index, meta)
+umap_visualizer = UMAPVisualizer(embedder, index, meta)
 
 @st.cache_data(show_spinner=False)
 def _load_logo_data_uri(path, max_width=160):
@@ -290,6 +293,13 @@ if "search_results" in st.session_state and st.session_state["search_results"]:
     query = st.session_state["search_query"]
     mode = st.session_state.get("search_mode", RADIO_MODES[0])
 
+    all_urls = [r.get("image_url") for r in results if r.get("image_url")]
+    image_cache = get_images_batch(all_urls)
+
+    # Embedding Map (UMAP) — shown first; the map opens when the expander is opened.
+    with st.expander("Embedding Map (UMAP)", expanded=False):
+        umap_visualizer.render(query, results, image_cache)
+
     # Concept-level explanation from metadata ( displayed for both query types)
     with st.spinner("Computing concept alignments…"):
         concept_explainer.render(query=query, results=results, top_n=5)
@@ -298,9 +308,6 @@ if "search_results" in st.session_state and st.session_state["search_results"]:
     # Results grid
     st.subheader(f"Top {len(results)} results")
     cols = st.columns(min(5, len(results)))
-
-    all_urls = [r.get("image_url") for r in results if r.get("image_url")]
-    image_cache = get_images_batch(all_urls)
 
     def _show_detailed_explanation(title, result_item, result_img, idx):
         """Detailed per-result explanation, opened as a wide dialog so charts
@@ -442,7 +449,10 @@ if "search_results" in st.session_state and st.session_state["search_results"]:
 
             elif active_panel == "XAI Methods":
                 if img_obj is not None:
-                    gradcam_col, ig_col = st.columns(2)
+                    att_col, gradcam_col, ig_col = st.columns(3)
+                    with att_col:
+                        if st.button("Attention Map", key=f"attn_btn_{i}", width='stretch'):
+                            attention_maps_explainer.show_dialog(r.get("title", "Untitled"), img_obj, query)
                     with gradcam_col:
                         if st.button("Grad-CAM (Query Relevance)", key=f"gradcam_btn_{i}", width='stretch'):
                             gradcam_explainer.show_dialog(r.get("title", "Untitled"), img_obj, query)

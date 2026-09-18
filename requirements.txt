@@ -15,3 +15,4 @@ plotly
 tqdm
 ultralytics
 shapely
+umap-learn
